@@ -31,5 +31,3 @@ if (Test-Connection -ComputerName github.com -Count 1 -Quiet) {
 Write-Host "--Hourly Data Script Finished--"
 Start-Sleep -Seconds 30
 
-#This is the github token for the repo
-#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 
