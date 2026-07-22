@@ -16,7 +16,7 @@ if (Test-Connection -ComputerName github.com -Count 1 -Quiet) {
 	git add .	
 	git commit -m "Hourly update"
 	#git pull origin main -X ours --no-edit
-	git push origin main
+	git push origin main --force
 
 	Write-Host "Data pushed."
 
