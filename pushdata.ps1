@@ -13,8 +13,7 @@ if (Test-Connection -ComputerName github.com -Count 1 -Quiet) {
 	cd "C:\Campbellsci\LoggerNet\data_collected"
 	git remote set-url origin https://github.com/PolinaSevastyanova1/weatherstation.git
 	git fetch origin main
-	git add CR1000_1436_Folgefonna_Modem_Table1min.dat
-	git add CR1000_1436_Folgefonna_Modem_Table15min.dat
+	git add .	
 	git commit -m "Hourly update"
 	#git pull origin main -X ours --no-edit
 	git push origin main
