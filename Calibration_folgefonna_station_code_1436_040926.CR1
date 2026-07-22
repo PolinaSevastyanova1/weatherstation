@@ -1,0 +1,404 @@
+'CR1000 Series Datalogger
+'Station: Folgefonna summit (1436)
+
+'Dim Socket as LONG
+
+'===== PROGRAMME ========================================================================================
+SequentialMode
+
+PreserveVariables                                 'Preserves variables in all variables when voltage off
+Public ID, BattV, PTemp_C                             'Public variables, available in all program sections                                                                   'Panel temperature
+Dim i                                                                            'Internal helper variable
+Units BattV=Volts                                                            'Unit for battery voltage
+Units PTemp_C=Deg C                                                          'Unit for panel temperature
+Public IP_Addr As String * 25
+'----- RealTime ---------------------------------------------------------------------------------------
+Dim Time(9)                                                            'Array for the RealTime instruction
+Alias Time(2)=Mnd
+Alias Time(3)=Dag
+Alias Time(4)=Hour
+Alias Time(5)=Minute
+Alias Time(6)=Sekund
+Alias Time(7)=Mikrosek
+Alias Time(8)=Dag_1_7
+Alias Time(9)=Dag_1_366
+'===== PRESSURE ==========================================================================================
+Const Elevation=0                                                         'Station elevation above sea level in m
+'----- 61302V -----------------------------------------------------------------------------------------
+Public P                                                                                   'Last value
+Dim BP_61302V_Analog                                                                       'Raw data in mV
+Dim Elevation_Correction                                                'Elevation correction in m above sea level
+Units P=hPa
+'===== TEMPERATURE =====================================================================================
+Const T_o=0                                                                                     'Offset
+Const T_m=1                                                                                 'Multiplier
+'-----TEMPERARTURE 1 Pt100 ---------------------------------------------------------------------------------
+Public T                                                                           'Last value (5 sec)
+Dim RS_R0                                                                      'Last measurement value (5 sec)
+'-----TEMPERARTURE 2 Pt100 ---------------------------------------------------------------------------------
+Public T_2                                                                           'Last value (5 sec)
+Dim RS_R0_2                                                                      'Last measurement value (5 sec)
+'===== HUMIDITY ======================================================================================
+'----- HUMIDITY 1 HMP155 -----------------------------------------------------------------------------------------
+Public U					                                                         'Last value (5 sec)
+Public U_temp		
+'----- HUMIDITY 2 HMP155 -----------------------------------------------------------------------------------------
+Public U_2					                                                         'Last value (5 sec)
+Public U_temp_2					                                                               'Average last minute
+'===== WIND ===========================================================================================
+AngleDegrees				          'To avoid converting to radians for COS and SIN calculations                                                    
+''----- WIND 1 05106-45 Alpine --------------------------------------------------------------------------------
+Public F                                                                       'Last second value
+Public D
+Public F_2                                                                         'Last second value
+'===== PRECIPITATION =========================================================================================
+Const R_m=0.204
+'----- IM523 ------------------------------------------------------------------------------------------
+Public RR_01		  			                                         'Tipping bucket last minute in mm'
+Public Vipp_1_s				                              'Number of pulses from tipping bucket last second'
+Dim Vipp_min				                          'Number of pulses from tipping bucket so far this minute'
+''===== SNOW HEIGHT =========================================================================================
+''----- SR50A ------------------------------------------------------------------------------------------
+Public SR50A(2)
+Alias SR50A(1)=Raw_Dist
+Alias SR50A(2)=Signal_Quality
+Public Temp_Corr_Dist
+Public Air_Temp
+Public Snow_Height
+Const Init_Dist=1.90                              'SR50A face to bare ground (m) — update on install'
+
+'===== SOLAR RADIATION =================================================================================
+Const K_QSI=13.37                                         'Calibration factor for short-wave incoming sensitivity'
+Const K_QLI=10.21                                         'Calibration factor for long-wave incoming sensitivity'
+Const K_QSO=13.26                                           'Calibration factor for short-wave outgoing sensitivity'
+Const K_QLO=13.24	                                          'Calibration factor for long-wave outgoing sensitivity'
+'----- CNR4 -------------------------------------------------------------------------------------------
+Public CNR4_Wpm2(4)					                                                      'Radiation values'
+Public QLI                 		                       'Temperature-compensated long-wave radiation from above'
+Public QLO  		                                    'Temperature-compensated long-wave radiation from below'
+Public TIQL 					                                       'Pt100 temperature in C (Campbell CNR4)'
+Dim CNR4_mult(4)
+Dim CNR4_mv(4)					                                        'Signal voltages (Campbell CNR4)'
+Dim CNR4_T_K       				                            'Thermistor temperature in K (Campbell CNR4)'
+Dim R_mv                                                                   'Raw data from thermistor in mV'
+Dim R_ohm                                  'Thermistor resistance, used for temperature calculation in sensor'
+Alias CNR4_mv(1)=Kort_inn_mV      		    	'Radiation balance sensor CNR4, signal voltages'
+Alias CNR4_mv(2)=Kort_ut_mV
+Alias CNR4_mv(3)=Lang_inn_mV
+Alias CNR4_mv(4)=Lang_ut_mV
+Alias CNR4_Wpm2(1)=QSI					                          'Radiation balance sensor CNR4, calculated radiation power'
+Alias CNR4_Wpm2(2)=QSO
+Alias CNR4_Wpm2(3)=QLI_ukorr
+Alias CNR4_Wpm2(4)=QLO_ukorr
+''===== TILT ================================================================================='
+Public Tilt_X                                                              'Tilt angle X-axis (degrees)'
+Public Tilt_Y                                                              'Tilt angle Y-axis (degrees)'
+'===== GPS ==============================================
+Public NMEASent(2) As String * 90
+Public GPSData(15)
+
+Public GNSS_Time As String
+Alias GPSData(1)=Latitude_A
+Alias GPSData(2)=Latitude_B
+Alias GPSData(3)=Longitude_A
+Alias GPSData(4)=Longitude_B
+Alias GPSData(5)=Speed
+Alias GPSData(6)=Course
+Alias GPSData(7)=MagVar
+Alias GPSData(8)=FixQual
+Alias GPSData(9)=NumSats
+Alias GPSData(10)=Altitude
+Alias GPSData(11)=PPS
+Alias GPSData(12)=SecSinceGPRMC
+Alias GPSData(13)=GPSReady
+Alias GPSData(14)=MaxClockChange
+Alias GPSData(15)=NumClockChange
+
+Units Latitude_A=degrees
+Units Latitude_B=minutes
+Units Longitude_A=degrees
+Units Longitude_B=minutes
+Units Speed=knots
+Units Course=degrees
+Units MagVar=degrees
+Units FixQual=code
+Units NumSats=count
+Units Altitude=meters
+Units PPS=microseconds
+Units SecSinceGPRMC=seconds
+Units GPSReady=count
+Units MaxClockChange=milliseconds
+Units NumClockChange=count
+
+'===== DATA STORAGE EVERY 15 MINUTES ========================
+DataTable(Table15min,true,-1)                                                          'changed to 15 minutes from 1minute
+  DataInterval(0,15,min,0)
+  CardOut(0,-1)                     'Writes to CF card, with all data, every mins 
+  Sample(1,ID,fp2) 
+  Minimum(1,BattV,FP2,False,True)               'Lowest battery voltage this hour'
+  Average(1,PTemp_C,fp2, False)                          'CR1000 panel temperature (deg C)'    
+  Sample(1,P,fp2)                                'Barometric pressure (hPa)'   
+    '===== TILT ===============================================================================c
+  Sample(1,Tilt_X,fp2)
+  Sample(1,Tilt_Y,fp2)
+  '===== GPS =============================================
+  Sample(1, Latitude_A, fp2)
+  Sample(1, Latitude_B, fp2)
+  Sample(1, Longitude_A, fp2)
+  Sample(1, Longitude_B, fp2)
+  Sample(1, MagVar, fp2)
+  Sample(1, NumSats, fp2)
+  Sample(1, Altitude, fp2)
+  Sample(1, FixQual, fp2)
+  Sample(1, MaxClockChange, fp2)
+  Sample(1, NumClockChange, fp2)
+  Sample(1,PPS,fp2)
+  Sample(1, SecSinceGPRMC, fp2)
+  Sample(1, NMEASent(1), String)
+  Sample(1, NMEASent(2), String)
+  Sample(1,GNSS_Time),String)         'write the GNSS time as string to table
+   '===== SNOW HEIGHT ===============================================================================
+  Sample(1,Snow_Height,fp2)
+  Sample(1,Signal_Quality,FP2) 
+  '===== TEMPERATURE ===================================================================================
+  Average(1,T,fp2,False)
+  Average(1,T_2,fp2,False)                                                                 'Average last minute' --> SW this samples, not averages
+  '===== HUMIDITY ====================================================================================
+  Average(1,U,fp2,False)
+  Average(1,U_temp,fp2,False)     
+  Average(1,U_2,fp2,False)
+  Average(1,U_temp_2,fp2,False)                                                               'Average last minute'                                                  'Temperature-corrected snow height (m)'
+ EndTable
+
+'===== DATA STORAGE EVERY 1 MINUTE ===================================================================
+DataTable(Table1min,true,-1)                                                          'changed to 15 minutes from 1minute
+  DataInterval(0,1,min,0)
+  CardOut(0,-1)                     'Writes to CF card, with all data, every mins 
+  Sample(1,ID,fp2)                                                                  'Station ID'                                                                  'Pressure at station level'
+  '===== WIND =========================================================================================
+  'Average(1,F,fp2, False)                                                  'Speed, average last minute'
+  'Average(1,D,fp2, False)  
+  'Average(1,F_2,fp2, False)                                                                                      
+  'Maximum(1,F,FP2,False,False)
+  'Maximum(1,F_2,FP2,False,False)
+
+  WindVector(1,F,D,fp2, False,0,0,0)
+   FieldNames("F1_Mean,D_mean,D_stdev")
+  Maximum(1,F,fp2,False,False)
+    FieldNames("F1_Max")
+  StdDev(1,F,fp2,False)
+    FieldNames("F1_stdev")
+    
+  WindVector(1,F_2,D,fp2, False,0,0,0)
+   FieldNames("F2_Mean")
+  Maximum(1,F_2,fp2,False,False)
+   FieldNames("F2_Max")
+  StdDev(1,F_2,fp2,False)
+   FieldNames("F2_stdev")
+  
+'===== SOLAR RADIATION ===============================================================================
+  Average(1,Round(QSI,1),FP2, False)                                             'Kort ovenfra (W/m2)
+  FieldNames ("QSI_Avg")
+  Average(1,Round(QSO,1),FP2, False)	                                          'Kort nedenfra (W/m2)
+  FieldNames ("QSO_Avg")
+  Average(1,Round(QLI,1),FP2, False)                         'Temp.korrigert langbolga ovenfra (W/m2)
+  FieldNames ("QLI_Avg")
+  Average(1,Round(QLO,1),FP2, False)                        'Temp.korrigert langbolga nedenfra (W/m2)
+  FieldNames ("QLO_Avg")
+  Average(1,Round(TIQL,1),FP2, False)                                      'CNR4-temperatur (Celsius)
+  FieldNames ("TIQL_Avg")
+  Average(1,Round(QLI_ukorr,1),FP2, False)                                  'Ukorrigert strolingsdata
+  FieldNames ("QLI_ukorr_Avg")
+  Average(1,Round(QLO_ukorr,1),FP2, False)                                  'Ukorrigert strolingsdata
+  FieldNames ("QLO_ukorr_Avg")
+ '===== PRECIPITATION =======================================================================================
+  '----- IM523 ----------------------------------------------------------------------------------------
+  Sample(1,RR_01,fp2)                                                      'Tipping bucket last minute in mm'
+  Sample(1,Snow_Height, fp2)
+  Sample(1, Signal_quality,fp2)
+EndTable
+
+'===== MAIN PROGRAMME ===================================================================================
+BeginProg                         'Starts programme, conditions before Scan happen only ONCE at startup'
+  ID=1436
+  PortSet (8,0)   ' CNR4 fan and heater off initially 
+  SetStatus("BaudrateCOM2", 4800)
+  
+  'Initial pressure value
+  PortSet(9,1)       
+  VoltSe (BP_61302V_Analog,1,mV5000,5,1,0,_50Hz,0.12,500)                                'Raw data in mV' --> in 5
+  Elevation_Correction=1013.25*(1-(1-Elevation/44307.69231)^5.253283)           'Correction factor'
+  P=Round(BP_61302V_Analog+Elevation_Correction,1)                  'Pressure corrected for station level'
+  If P<800 OR P>1300 Then P=-99.9
+  PortSet(9,0)
+  
+  'Initial snow height
+  SDI12Recorder(SR50A(), 1, 0, "aM1!", 1, 0)         'Port C1 is SDI12 address 0'
+  If Raw_Dist > -10 Then
+   Air_Temp=T
+   Temp_Corr_Dist = Raw_Dist * SQR((Air_Temp + 273.15) / 273.15)
+   Snow_Height = Init_Dist-Temp_Corr_Dist
+  Else
+   Snow_Height = -999
+  EndIf
+        
+  'Initial bettery and panel temperature
+  Battery(BattV)                                                               'Measures battery voltage'
+  PanelTemp(PTemp_C,_50Hz)
+  
+  '===== SCAN EVERY SECOND =======================================================================================
+  Scan(1,Sec,1,0)                                                                         'Main sequence'
+    If IfTime(0,1,min) Then RealTime(Time) 
+'    '===== WIND =======================================================================================
+'    '----- WIND 1 05106-45 Alpine ----------------------------------------------------------------------------
+    PulseCount(F,1,1,1,1,0.098,0)                                                    'Count pulses'
+    BrHalf(D,1,mv2500,4,Vx3,1,2500,true,0,_50hz,355,0)
+    If F<0.3 Then
+        F=0
+        D=0
+    EndIf
+    If D>=360 Then D=D-360
+    If D<0 Then D=D+360     
+'    '----- WIND 2 05106-45 Alpine ----------------------------------------------------------------------------
+    PulseCount(F_2,1,2,1,1,0.098,0) 
+    If F_2<0.3 Then
+       F_2=0
+    EndIf                                                   'Count pulses'
+      If IfTime(0,5,sec) Then    
+            '===== TEMPERATURE =================================================================================
+            '----- TEMPERATURE 1 Pt100 1/10 DIN -----------------------------------------------------------------------------        
+            BrHalf3W (RS_R0,1,mV25,7,Vx1,1,2000,True ,0,_50Hz,100,0)                'Moved into 5 sec scan' --> SE channel 7
+            PRT(T,1,RS_R0,T_m,T_o)                                                'Converts (last) to deg C'                                    
+            '===== RELAY LOOP BEGINNING =================================================================================
+            '--- reset relay → relay 1 (humidity 1) → relay 2 (humidity 2) → relay 3 (temperature 3) ---
+            PortSet(6,1)
+            Delay(0,150,mSec)
+            PulsePort(7,10000)
+            '----- RELAY 1: HUMIDITY 1 HMP155 -------------------------------------------------------------------------------------                                             'Settling time'
+            VoltSe(U,1,mV2500,2,false,0,250,0.1,0)               'Read HMP155 #1 RH from mux relay 1L'
+            VoltSe(U_temp,1,mV2500,1,false,0,250,0.14,-80)               'Read HMP155 #1 RH from mux relay 1L'
+            '--- Advance to relay 2: 1 CLK pulse ---
+            Delay(0,150,mSec)
+            PulsePort(7,10000)
+            '----- RELAY 2:HUMIDITY 2 HMP155 -------------------------------------------------------------------------------------                        
+            VoltSe(U_2,1,mV2500,2,false,0,250,0.1,0)               'Read HMP155 #2 RH from mux relay ??' --> SW maybe is 4
+            VoltSe(U_temp_2,1,mV2500,1,false,0,250,0.14,-80)               'Read HMP155 #1 RH from mux relay 1L'
+            '--- Advance to relay 3: 1 CLK pulse ---
+            Delay(0,150,mSec)
+            PulsePort(7,10000)
+            '----- RELAY 3: TEMPERATURE 2 Pt100 -----------------------------------------------------------------------------        
+            '3-wire bridge sharing excitation with Temp 1 on Vx1'   
+            BrHalf3W (RS_R0_2,1,mV25,1,Vx1,1,2000,True,0,_50Hz,100,0)    'Read PT100 2 through mux relay 3'  SW --> maybe is  5 if SE         'Hold CLK low (C7 = CLK) before toggle'
+            PRT(T_2,1,RS_R0_2,T_m,T_o)                                                'Converts (last) to deg C'                                               'Rounds to nearest 0.1 degrees'
+      '   '----- RELAY 4: TILT -----------------------------------------------------------------------------        
+            Delay(0,150,mSec)
+            PulsePort(7,10000)
+            VoltSe(Tilt_Y,1,mV5000,1,false,0,_50Hz,0.0125, -30.55)               'Read Tilt_Y raw (mV)'
+            VoltSe(Tilt_X,1,mV5000,2,false,0,_50Hz,0.0125, -33.65)               'Read Tilt_X raw (mV)'
+            '--- Reset mux back to relay 1 ---
+            PortSet(6,0)
+            Delay(0,150,mSec)
+            '===== RELAY LOOP END =================================================================================
+      EndIf
+
+'    '===== PRECIPITATION =====================================================================================
+'    '----- IM523 --------------------------------------------------------------------------------------
+      PulseCount(Vipp_1_s,1,12,2,0,1,0)		  	           'Counts pulses from Lambrecht tipping bucket'
+      Vipp_min=Vipp_min+Vipp_1_s			  	          'Updates number of tips so far this minute'
+      If IfTime(0,1,min) Then
+        RR_01=R_m*Vipp_min			              'Calculates tipping bucket last minute in mm'
+        Vipp_min=0
+      EndIf
+'      '===== SOLAR RADIATION =============================================================================
+'      '----- CNR4 ---------------------------------------------------------------------------------------
+   
+      VoltDiff(CNR4_mv(1),4,mv25c,5,true,0,_50hz,1,0)					 '4 voltages from CNR4 on DIFF 3-6'
+      CNR4_mult(1)=1000/K_QSI              						'Multiplier factors for CNR4'
+      CNR4_mult(2)=1000/K_QSO
+      CNR4_mult(3)=1000/K_QLI
+      CNR4_mult(4)=1000/K_QLO
+      For I=1 To 4
+        CNR4_Wpm2(I)=CNR4_mv(I)*CNR4_mult(I)						'Converts to radiation'
+      Next I 
+       BrHalf (R_mv,1,mV250,6,Vx2,1,250,True ,50000,_50Hz,1.0,0)                'Temperature in CNR4 (Thermistor)'	
+      R_ohm=10000*R_mv/(1-R_mv)                                      'Ohms from thermistor measurement, ref=10k'	 
+      TIQL=(1/(1.0295e-3+2.391e-4*LN(R_ohm)+1.568e-7*(LN(R_ohm))^3))-273.15      'Converts to Celsius'
+      CNR4_T_K=TIQL+273.15							  'Converts to Kelvin'
+      QLI=QLI_ukorr+5.67e-8*CNR4_T_K^4                  	          'Temperature-corrects long-wave radiation'
+      QLO=QLO_ukorr+5.67e-8*CNR4_T_K^4
+      QSI=Round(QSI,1)                                                       'Rounds to one decimal'
+      QSO=Round(QSO,1)                                                       'Rounds to one decimal'
+      QLI=Round(QLI,1)                                                       'Rounds to one decimal'
+      QLO=Round(QLO,1)                                                       'Rounds to one decimal'
+      TIQL=Round(TIQL,1)                                                     'Rounds to one decimal'
+      If QSI=NAN Then QSI=-99.9                                               'Stores -99.9 instead of NAN'
+      If QSO=NAN Then QSO=-99.9                                               'Stores -99.9 instead of NAN'
+      If QLI=NAN Then QLI=-99.9                                               'Stores -99.9 instead of NAN'
+      If QLO=NAN Then QLO=-99.9                                               'Stores -99.9 instead of NAN'
+      If TIQL=NAN Then TIQL=-99.9                                                'Stores -99.9 instead of NAN'
+    'CallTable(Table1min)
+    'CallTable(Table10min)            'Stores data if time matches storage interval for the data table'
+    NextScan
+    '===== 1-SECOND MEASUREMENT BLOCK END ================================================================================='
+    SlowSequence
+    '=====15 MINUTE MEASUREMENT BLOCK ======================================================================================='
+    Scan(1, Min,15,0)
+       PortSet(8,0)
+'      '----- SNOW HEIGHT SR50A -------------------------------------------------------------------------------------
+       SDI12Recorder(SR50A(), 1, 0, "aM1!", 1, 0)         'Port C1 is SDI12 address 0'
+      'Getting temp corrected sensor height'
+        If Raw_Dist > -10 Then
+         Air_Temp=T
+         Temp_Corr_Dist = Raw_Dist * SQR((Air_Temp + 273.15) / 273.15)
+         Snow_Height = Init_Dist-Temp_Corr_Dist
+        Else
+          Snow_Height = -999
+        EndIf
+        
+      '===== GPS ========================================
+      GPS(GPSData(),Com2,-1,100,NMEASent())  
+      '----- Battery + panel temperature -----------------------------------------------------------------------
+      Battery(BattV)                                                               'Measures battery voltage'
+  	  PanelTemp(PTemp_C,_50Hz)                                                     'Measures panel temperature'
+
+      '=====PRESSURE ======================================================================================='
+      If TimeIntoInterval(59,60,Min) Then PortSet(9,1)
+	    If TimeIntoInterval(0,60,Min) Then        
+        VoltSe (BP_61302V_Analog,1,mV5000,5,1,0,_50Hz,0.12,500)                                'Raw data in mV' --> in 5
+        Elevation_Correction=1013.25*(1-(1-Elevation/44307.69231)^5.253283)           'Correction factor'
+        P=Round(BP_61302V_Analog+Elevation_Correction,2)                  'Pressure corrected for station level'
+        If P<800 OR P>1500 Then P=-99.9
+        PortSet(9,0)
+       EndIf     
+
+'    '===== CONDITIONAL FOR CNR4 FAN AND HEATER ======================================================================================='
+'    'Turns on CNR4 fan and heater for 5 min if 
+'      'internal temperature is below zero, 
+'      'AND Humidity is above 80% 
+'      'AND battery voltage is above 11.5V
+      If BattV>=12 AND TIQL<0 AND U>90 Then 
+        PortSet(8,1)
+      Else 
+        PortSet(8,0)
+      EndIf
+         
+      ' Turn modem ON during first 10 minutes of each hour
+      '   Alternative-1 using IfTime/TimeIntoInterval instruction
+      If IfTime(0,60,Min) Then     'IfTime should only return True/False note that IfTime() is an alias to TimeIntoInterval()
+        PortSet (5,1)   ' Modem ON
+      EndIf
+      If IfTime(1,60,Min) Then 
+        IP_Addr=PPPOpen()
+      EndIf
+      If IfTime(9,60,Min) Then 
+        PPPClose()
+      EndIf
+      If IfTime(10,60,Min) Then
+        PortSet (5,0)   ' Modem OFF
+      EndIf
+    
+    '===== STORE DATA TABLE ===========================================================================
+     CallTable(Table1min)
+     CallTable(Table15min)
+    NextScan
+  EndProg
